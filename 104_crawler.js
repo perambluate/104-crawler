@@ -6,9 +6,18 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const fs = require('fs');
 const path = require('path');
 
-const baseUrl = 'https://www.104.com.tw/company/10ww9gpk?roleJobCat=1_2008001016,1_2009003006,1_2009002007,1_2008001023,1_2009002005&page=1&pageSize=20&order=99&asc=0&jobsource=my104_p_d&tab=job#info06';
+// Get baseUrl from command line or use default
+const baseUrl = process.argv[2];
+
+// Validate URL format
+if (!baseUrl.match(/^https:\/\/www\.104\.com\.tw\/company\//)) {
+  console.error('Invalid URL format. URL must be a valid 104.com.tw company page');
+  process.exit(1);
+}
+
 const allJobs = [];
 const expLevels = ['經歷不拘'];
+const eduLevels = ['碩士', '碩士以上', '大學', '大學以上', '專科', '專科以上'];
 
 (async () => {
   try {
@@ -34,18 +43,29 @@ const expLevels = ['經歷不拘'];
 
     // Function to scrape jobs from current page
     async function scrapeJobsFromPage() {
-      return await page.$$eval('div.joblist__container .job-list-container', (containers, targetLevels) => {
-        return containers.map(container => {
+      return await page.$$eval('div.joblist__container .job-list-container', (containers, expLevels, eduLevels) => {
+        let results = containers.map(container => {
           const infoTags = container.querySelectorAll('.info-tags__text');
           const secondTag = infoTags[1] ? infoTags[1].innerText.trim() : 'N/A';
+          const thirdTag = infoTags[2] ? infoTags[2].innerText.trim() : 'N/A';
           const titleElement = container.querySelector('div.info-job');
           const title = titleElement ? titleElement.innerText.trim() : 'N/A';
           let link = container.querySelector('a.jb-link');
           link = link ? link?.href : 'N/A';
 
-          return { title, link, secondTag };
-        }).filter(job => targetLevels.includes(job.secondTag));
-      }, expLevels);
+          return { title, link, secondTag, thirdTag };
+        });
+
+        if (expLevels && expLevels.length > 0) {
+          results = results.filter(job => expLevels.includes(job.secondTag));
+        }
+
+        if (eduLevels && eduLevels.length > 0) {
+          results = results.filter(job => eduLevels.includes(job.thirdTag));
+        }
+
+        return results;
+      }, expLevels, eduLevels);
     }
 
     // Navigate to first page
